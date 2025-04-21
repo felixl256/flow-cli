@@ -24,14 +24,15 @@ import (
 	"strings"
 
 	"github.com/onflow/flowkit/v2/accounts"
+	"github.com/onflow/flowkit/v2/gateway"
 
-	"github.com/onflow/flow-go-sdk"
+	f "github.com/onflow/flow-go-sdk"
 	"github.com/onflow/flow-go-sdk/crypto"
 	"github.com/spf13/cobra"
 
 	"github.com/onflow/flowkit/v2"
-	"github.com/onflow/flowkit/v2/output"
 	"github.com/onflow/flowkit/v2/config"
+	"github.com/onflow/flowkit/v2/output"
 
 	"github.com/onflow/flow-cli/internal/command"
 )
@@ -67,13 +68,14 @@ func create(
 	if len(createFlags.Keys) == 0 { // if user doesn't provide any flags go into interactive mode
 		return createInteractive(state)
 	} else {
-		return createManual(state, flow)
+		return createManual(state, flow, globalFlags)
 	}
 }
 
 func createManual(
 	state *flowkit.State,
 	flow flowkit.Services,
+	gFlags command.GlobalFlags,
 ) (*accountResult, error) {
 	sigsFlag := createFlags.SigAlgo
 	hashFlag := createFlags.HashAlgo
@@ -123,6 +125,37 @@ func createManual(
 		}
 	}
 
+	var selectedNetwork config.Network
+	if gFlags.Network == "testnet" {
+		selectedNetwork = config.TestingNetwork
+	} else {
+		selectedNetwork = config.MainnetNetwork
+	}
+
+	gw, err := gateway.NewGrpcGateway(selectedNetwork)
+	if err != nil {
+		return nil, err
+	}
+	nFlowKit := flowkit.NewFlowkit(state, selectedNetwork, gw, output.NewStdoutLogger(output.NoneLog))
+
+	var accountAddress *f.Address
+	accountAddress, err = createNetworkAccount2(nFlowKit, keys[0].Public.String(), selectedNetwork)
+	if err != nil {
+		return nil, err
+	}
+
+	log := output.NewStdoutLogger(output.InfoLog)
+	defer log.StopProgress()
+	if accountAddress != nil {
+		log.Info(fmt.Sprintf(
+			"%s New Account Created With Address %s on %s network.\n",
+			output.SuccessEmoji(),
+			output.Bold(fmt.Sprintf("0x%s", accountAddress)),
+			output.Bold(selectedNetwork.Name)),
+		)
+		return nil, nil
+	}
+
 	account, _, err := flow.CreateAccount(
 		context.Background(),
 		signer,
@@ -142,8 +175,8 @@ func createNetworkAccount2(
 	flow flowkit.Services,
 	pubKey string,
 	network config.Network,
-) (*flow.Address, error) {
-	networkAccount := &lilicoAccount {
+) (*f.Address, error) {
+	networkAccount := &lilicoAccount{
 		PublicKey: strings.TrimPrefix(pubKey, "0x"),
 	}
 
