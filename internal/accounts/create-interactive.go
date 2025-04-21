@@ -291,6 +291,61 @@ func (l *lilicoAccount) create(network string) (flowsdk.Identifier, error) {
 	return flowsdk.HexToID(lilicoRes.Data.TxId), nil
 }
 
+func (l *lilicoAccount) create2(network string, signAlgo string) (flowsdk.Identifier, error) {
+	// fix to the defaults as we don't support other values
+	l.HashAlgorithm = defaultHashAlgo.String()
+	l.SignatureAlgorithm = signAlgo
+	l.Weight = flowsdk.AccountKeyWeightThreshold
+
+	data, err := json.Marshal(l)
+	if err != nil {
+		return flowsdk.EmptyID, err
+	}
+
+	apiNetwork := ""
+	if network == config.TestnetNetwork.Name {
+		apiNetwork = "/testnet"
+	}
+
+	request, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("https://openapi.lilico.org/v1/address%s", apiNetwork),
+		bytes.NewReader(data),
+	)
+	if err != nil {
+		return flowsdk.EmptyID, fmt.Errorf("could not create an account: %w", err)
+	}
+
+	request.Header.Add("Content-Type", "application/json; charset=UTF-8")
+	request.Header.Add("Authorization", accountToken)
+
+	client := &http.Client{
+		Timeout: time.Second * 20,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // lilico api doesn't yet have a valid cert, todo reevaluate
+		},
+	}
+	res, err := client.Do(request)
+	if err != nil {
+		return flowsdk.EmptyID, fmt.Errorf("could not create an account: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(res.Body)
+		return flowsdk.EmptyID, fmt.Errorf("account creation failed with status %d: %s", res.StatusCode, string(bodyBytes))
+	}
+
+	body, _ := io.ReadAll(res.Body)
+	var lilicoRes lilicoResponse
+
+	err = json.Unmarshal(body, &lilicoRes)
+	if err != nil {
+		return flowsdk.EmptyID, fmt.Errorf("could not create an account: %w", err)
+	}
+	return flowsdk.HexToID(lilicoRes.Data.TxId), nil
+}
+
 // outputList helper for printing lists
 func outputList(log *output.StdoutLogger, items []string, numbered bool) {
 	log.Info(fmt.Sprintf("%s:", items[0]))
