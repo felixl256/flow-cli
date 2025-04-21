@@ -82,6 +82,9 @@ func createManual(
 	keysFlag := createFlags.Keys
 	weightFlag := createFlags.Weights
 
+	log := output.NewStdoutLogger(output.InfoLog)
+	defer log.StopProgress()
+
 	signer, err := state.Accounts().ByName(createFlags.Signer)
 	if err != nil {
 		return nil, err
@@ -127,10 +130,12 @@ func createManual(
 
 	var selectedNetwork config.Network
 	if gFlags.Network == "testnet" {
-		selectedNetwork = config.TestingNetwork
+		selectedNetwork = config.TestnetNetwork
 	} else {
 		selectedNetwork = config.MainnetNetwork
 	}
+
+	log.Info(fmt.Sprintf("Received Options %s , %s , %s", keys[0].Public.String(), gFlags.Network, sigAlgos[0]))
 
 	gw, err := gateway.NewGrpcGateway(selectedNetwork)
 	if err != nil {
@@ -139,13 +144,11 @@ func createManual(
 	nFlowKit := flowkit.NewFlowkit(state, selectedNetwork, gw, output.NewStdoutLogger(output.NoneLog))
 
 	var accountAddress *f.Address
-	accountAddress, err = createNetworkAccount2(nFlowKit, keys[0].Public.String(), selectedNetwork)
+	accountAddress, err = createNetworkAccount2(nFlowKit, keys[0].Public.String(), selectedNetwork, sigsFlag[0])
 	if err != nil {
 		return nil, err
 	}
 
-	log := output.NewStdoutLogger(output.InfoLog)
-	defer log.StopProgress()
 	if accountAddress != nil {
 		log.Info(fmt.Sprintf(
 			"%s New Account Created With Address %s on %s network.\n",
@@ -175,12 +178,13 @@ func createNetworkAccount2(
 	flow flowkit.Services,
 	pubKey string,
 	network config.Network,
+	sigAlgo string,
 ) (*f.Address, error) {
 	networkAccount := &lilicoAccount{
 		PublicKey: strings.TrimPrefix(pubKey, "0x"),
 	}
 
-	id, err := networkAccount.create(network.Name)
+	id, err := networkAccount.create2(network.Name, sigAlgo)
 	if err != nil {
 		return nil, err
 	}
