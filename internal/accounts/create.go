@@ -25,11 +25,13 @@ import (
 
 	"github.com/onflow/flowkit/v2/accounts"
 
+	"github.com/onflow/flow-go-sdk"
 	"github.com/onflow/flow-go-sdk/crypto"
 	"github.com/spf13/cobra"
 
 	"github.com/onflow/flowkit/v2"
 	"github.com/onflow/flowkit/v2/output"
+	"github.com/onflow/flowkit/v2/config"
 
 	"github.com/onflow/flow-cli/internal/command"
 )
@@ -134,6 +136,34 @@ func createManual(
 		Account: account,
 		include: createFlags.Include,
 	}, nil
+}
+
+func createNetworkAccount2(
+	flow flowkit.Services,
+	pubKey string,
+	network config.Network,
+) (*flow.Address, error) {
+	networkAccount := &lilicoAccount {
+		PublicKey: strings.TrimPrefix(pubKey, "0x"),
+	}
+
+	id, err := networkAccount.create(network.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := getAccountCreationResult(flow, id)
+	if err != nil {
+		return nil, err
+	}
+
+	events := flowkit.EventsFromTransaction(result)
+	address := events.GetCreatedAddresses()
+	if len(address) == 0 {
+		return nil, fmt.Errorf("account creation error")
+	}
+
+	return address[0], nil
 }
 
 func parseHashingAlgorithms(algorithms []string) ([]crypto.HashAlgorithm, error) {
